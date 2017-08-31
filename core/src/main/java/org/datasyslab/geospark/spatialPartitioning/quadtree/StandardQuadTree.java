@@ -20,7 +20,7 @@ public class StandardQuadTree<T> implements Serializable {
 
     private final int level;
     private int nodeNum=0;
-    
+
     // the four sub regions,
     // may be null if not needed
     private StandardQuadTree<T>[] regions;
