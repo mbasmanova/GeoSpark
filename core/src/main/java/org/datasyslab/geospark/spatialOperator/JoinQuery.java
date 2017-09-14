@@ -111,10 +111,10 @@ public class JoinQuery implements Serializable{
             this.polygonIndexType = null;
         }
 
-        private JoinParamsInternal(boolean considerBoundaryIntersection, IndexType polygonIndexType) {
+        private JoinParamsInternal(boolean considerBoundaryIntersection, IndexType polygonIndexType, boolean allowDuplicates) {
             this.useIndex = false;
             this.considerBoundaryIntersection = considerBoundaryIntersection;
-            this.allowDuplicates = false;
+            this.allowDuplicates = allowDuplicates;
             this.polygonIndexType = polygonIndexType;
         }
     }
@@ -192,14 +192,20 @@ public class JoinQuery implements Serializable{
     public static final class JoinParams {
         public final boolean considerBoundaryIntersection;
         public final IndexType polygonIndexType;
+        private final boolean allowDuplicates;
 
         public JoinParams(boolean considerBoundaryIntersection) {
-            this(considerBoundaryIntersection, null);
+            this(considerBoundaryIntersection, null, false);
         }
 
         public JoinParams(boolean considerBoundaryIntersection, IndexType polygonIndexType) {
+            this(considerBoundaryIntersection, polygonIndexType, false);
+        }
+
+        public JoinParams(boolean considerBoundaryIntersection, IndexType polygonIndexType, boolean allowDuplicates) {
             this.considerBoundaryIntersection = considerBoundaryIntersection;
             this.polygonIndexType = polygonIndexType;
+            this.allowDuplicates = allowDuplicates;
         }
     }
 
@@ -221,7 +227,7 @@ public class JoinQuery implements Serializable{
      * @return RDD of pairs of matching geometries
      */
     public static <T extends Geometry, U extends Geometry> JavaPairRDD<U, T> spatialJoin(SpatialRDD<T> spatialRDD, SpatialRDD<U> queryRDD, JoinParams joinParams) throws Exception {
-        final JoinParamsInternal params = new JoinParamsInternal(joinParams.considerBoundaryIntersection, joinParams.polygonIndexType);
+        final JoinParamsInternal params = new JoinParamsInternal(joinParams.considerBoundaryIntersection, joinParams.polygonIndexType, joinParams.allowDuplicates);
         return spatialJoinInt(spatialRDD, queryRDD, params);
     }
 

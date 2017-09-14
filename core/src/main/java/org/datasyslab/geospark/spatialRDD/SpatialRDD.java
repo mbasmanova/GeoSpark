@@ -15,6 +15,7 @@ import com.vividsolutions.jts.geom.Polygon;
 import com.vividsolutions.jts.index.SpatialIndex;
 import com.vividsolutions.jts.index.quadtree.Quadtree;
 import com.vividsolutions.jts.index.strtree.STRtree;
+import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.FlatMapFunction;
@@ -57,9 +58,7 @@ import java.util.Set;
  * The Class SpatialRDD.
  */
 public class SpatialRDD<T extends Geometry> implements Serializable{
-
-	/** The Constant logger. */
-	final static Logger logger = Logger.getLogger(SpatialRDD.class);
+	private static final Logger log = LogManager.getLogger(SpatialRDD.class);
 
     /** The total number of records. */
     public long approximateTotalCount=-1;
@@ -140,6 +139,11 @@ public class SpatialRDD<T extends Geometry> implements Serializable{
 		}
 	}
 
+	public boolean spatialPartitioning(GridType gridType) throws Exception {
+		int numPartitions = this.rawSpatialRDD.rdd().partitions().length;
+		return spatialPartitioning(gridType, numPartitions);
+	}
+
 	/**
 	 * Spatial partitioning.
 	 *
@@ -147,9 +151,8 @@ public class SpatialRDD<T extends Geometry> implements Serializable{
 	 * @return true, if successful
 	 * @throws Exception the exception
 	 */
-	public boolean spatialPartitioning(GridType gridType) throws Exception
+	public boolean spatialPartitioning(GridType gridType, int numPartitions) throws Exception
 	{
-        int numPartitions = this.rawSpatialRDD.rdd().partitions().length;;
 		if(this.boundaryEnvelope==null)
         {
         	throw new Exception("[AbstractSpatialRDD][spatialPartitioning] SpatialRDD boundary is null. Please call analyze() first.");
@@ -177,7 +180,7 @@ public class SpatialRDD<T extends Geometry> implements Serializable{
 			})
 			.collect();
 
-		logger.info("Collected " + samples.size() + " samples");
+		log.info("Collected " + samples.size() + " samples");
 
         //Sort
         if(gridType == GridType.EQUALGRID)
