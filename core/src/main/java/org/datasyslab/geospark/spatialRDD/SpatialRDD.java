@@ -283,7 +283,7 @@ public class SpatialRDD<T extends Geometry> implements Serializable{
 	}
 
 	private JavaRDD<T> partitionUsingGrids(final List<Envelope> grids) {
-		final SpatialPartitioner partitioner = new SpatialPartitioner(grids.size());
+		final SpatialPartitioner partitioner = new SpatialPartitioner(grids);
 		return this.rawSpatialRDD.flatMapToPair(
 				new PairFlatMapFunction<T, Integer, T>() {
 					@Override

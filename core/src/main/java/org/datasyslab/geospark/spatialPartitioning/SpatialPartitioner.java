@@ -6,9 +6,11 @@
  */
 package org.datasyslab.geospark.spatialPartitioning;
 
-import java.io.Serializable;
-
+import com.vividsolutions.jts.geom.Envelope;
 import org.apache.spark.Partitioner;
+
+import java.io.Serializable;
+import java.util.List;
 
 // TODO: Auto-generated Javadoc
 /**
@@ -18,18 +20,24 @@ public class SpatialPartitioner extends Partitioner implements Serializable{
 
 	/** The num parts. */
 	private int numParts;
+	private List<Envelope> grids;
 
 	/**
 	 * Instantiates a new spatial partitioner.
 	 *
 	 * @param grids the grids
 	 */
-	public SpatialPartitioner(int grids)
+	public SpatialPartitioner(List<Envelope> grids)
 	{
-
-		numParts=grids+1;
+		// TODO Discard object falling into the overflow partition during partitioning
+		this.numParts = grids.size() + 1 /* overflow partition */;
+		this.grids = grids;
 	}
-	
+
+	public List<Envelope> getGrids() {
+		return grids;
+	}
+
 	/* (non-Javadoc)
 	 * @see org.apache.spark.Partitioner#getPartition(java.lang.Object)
 	 */

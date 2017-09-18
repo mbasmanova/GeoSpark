@@ -9,8 +9,10 @@ package org.datasyslab.geospark.spatialOperator;
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.Polygon;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.Partitioner;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.Optional;
 import org.apache.spark.api.java.function.FlatMapFunction2;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
@@ -141,6 +143,7 @@ public class JoinQuery implements Serializable{
             } else {
                 judgement = new NestedLoopJudgement(joinParams.considerBoundaryIntersection);
             }
+            final Optional<Partitioner> partitioner = spatialRDD.spatialPartitionedRDD.partitioner();
             resultWithDuplicates = spatialRDD.spatialPartitionedRDD.zipPartitions(queryRDD.spatialPartitionedRDD, judgement);
         }
 
