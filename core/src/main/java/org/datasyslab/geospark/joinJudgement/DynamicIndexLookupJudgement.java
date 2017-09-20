@@ -12,6 +12,7 @@ import org.apache.log4j.Logger;
 import org.apache.spark.api.java.function.FlatMapFunction2;
 import org.datasyslab.geospark.enums.IndexType;
 
+import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,8 +28,12 @@ public class DynamicIndexLookupJudgement<T extends Geometry, U extends Geometry>
 
     private final IndexType indexType;
 
-    public DynamicIndexLookupJudgement(boolean considerBoundaryIntersection, IndexType indexType) {
-        super(considerBoundaryIntersection);
+    /**
+     * @see JudgementBase
+     */
+    public DynamicIndexLookupJudgement(boolean considerBoundaryIntersection, IndexType indexType,
+                                       @Nullable DedupParams dedupParams) {
+        super(considerBoundaryIntersection, dedupParams);
         this.indexType = indexType;
     }
 
@@ -38,6 +43,8 @@ public class DynamicIndexLookupJudgement<T extends Geometry, U extends Geometry>
         if (!windowShapes.hasNext()) {
             return Collections.emptyIterator();
         }
+
+        initPartition();
 
         final SpatialIndex spatialIndex = buildIndex(windowShapes);
 

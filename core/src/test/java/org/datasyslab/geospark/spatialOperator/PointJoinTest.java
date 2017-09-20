@@ -8,7 +8,7 @@ package org.datasyslab.geospark.spatialOperator;
 
 import com.vividsolutions.jts.geom.Point;
 import com.vividsolutions.jts.geom.Polygon;
-import org.apache.spark.storage.StorageLevel;
+import org.datasyslab.geospark.enums.GridType;
 import org.datasyslab.geospark.enums.IndexType;
 import org.datasyslab.geospark.spatialRDD.PointRDD;
 import org.datasyslab.geospark.spatialRDD.PolygonRDD;
@@ -17,8 +17,12 @@ import org.datasyslab.geospark.spatialRDD.SpatialRDD;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import scala.Tuple2;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 
@@ -27,16 +31,27 @@ import static org.junit.Assert.assertEquals;
 /**
  * @author Arizona State University DataSystems Lab
  */
-
-
-// TODO: Auto-generated Javadoc
-/**
- * The Class PointJoinTest.
- */
+@RunWith(Parameterized.class)
 public class PointJoinTest extends JoinTestBase {
 
     private static long expectedRectangleMatchCount;
     private static long expectedPolygonMatchCount;
+
+    public PointJoinTest(GridType gridType, boolean useLegacyPartitionAPIs) {
+        super(gridType, useLegacyPartitionAPIs);
+    }
+
+    @Parameterized.Parameters
+    public static Collection testParams() {
+        return Arrays.asList(new Object[][] {
+            { GridType.RTREE, true },
+            { GridType.RTREE, false },
+            { GridType.QUADTREE, true },
+            { GridType.QUADTREE, false},
+            { GridType.HILBERT, true },
+            { GridType.HILBERT, false },
+        });
+    }
 
     /**
      * Once executed before all.
@@ -55,36 +70,7 @@ public class PointJoinTest extends JoinTestBase {
     public static void TearDown() {
         sc.stop();
     }
-    
-    /**
-     * Test spatial join query with rectangle RDD.
-     *
-     * @throws Exception the exception
-     */
-    /*
-    @Test(expected = NullPointerException.class)
-    public void testSpatialJoinQueryUsingIndexException() throws Exception {
-        RectangleRDD queryRDD = new RectangleRDD(sc, InputLocationQueryWindow, offset, splitter, numPartitions);
 
-        PointRDD spatialRDD = new PointRDD(sc, InputLocation, offset, splitter, numPartitions);
-        
-        spatialRDD.spatialPartitioning(gridType);
-        
-        queryRDD.spatialPartitioning(spatialRDD.grids);
-        
-        List<Tuple2<Envelope, HashSet<Point>>> result = JoinQuery.SpatialJoinQuery(spatialRDD,queryRDD,true).collect();
-        
-        assert result.get(1)._1().getUserData()!=null;
-        for(int i=0;i<result.size();i++)
-        {
-        	if(result.get(i)._2().size()!=0)
-        	{
-        		assert result.get(i)._2().iterator().next().getUserData()!=null;
-        	}
-        }
-
-    }
-    */
     /**
      * Test spatial join query.
      *
@@ -110,8 +96,7 @@ public class PointJoinTest extends JoinTestBase {
     private void testNestedLoopInt(SpatialRDD<Polygon> queryRDD, long expectedCount) throws Exception {
         PointRDD spatialRDD = createPointRDD();
 
-        spatialRDD.spatialPartitioning(gridType);
-        queryRDD.spatialPartitioning(spatialRDD.grids);
+        partitionRdds(queryRDD, spatialRDD);
 
         List<Tuple2<Polygon, HashSet<Point>>> result = JoinQuery.SpatialJoinQuery(spatialRDD, queryRDD,false,true).collect();
 
@@ -166,10 +151,8 @@ public class PointJoinTest extends JoinTestBase {
     private void testIndexInt(SpatialRDD<Polygon> queryRDD, IndexType indexType, long expectedCount) throws Exception {
         PointRDD spatialRDD = createPointRDD();
 
-        spatialRDD.spatialPartitioning(gridType);
+        partitionRdds(queryRDD, spatialRDD);
         spatialRDD.buildIndex(indexType, true);
-
-        queryRDD.spatialPartitioning(spatialRDD.grids);
 
         List<Tuple2<Polygon, HashSet<Point>>> result = JoinQuery.SpatialJoinQuery(spatialRDD, queryRDD,false,true).collect();
 
@@ -186,8 +169,7 @@ public class PointJoinTest extends JoinTestBase {
     private void testDynamicRTreeInt(RectangleRDD queryRDD, IndexType indexType, long expectedCount) throws Exception {
         PointRDD spatialRDD = createPointRDD();
 
-        spatialRDD.spatialPartitioning(gridType);
-        queryRDD.spatialPartitioning(spatialRDD.grids);
+        partitionRdds(queryRDD, spatialRDD);
 
         JoinQuery.JoinParams joinParams = new JoinQuery.JoinParams(true, indexType);
         List<Tuple2<Polygon, Point>> results = JoinQuery.spatialJoin(spatialRDD, queryRDD, joinParams).collect();
@@ -197,14 +179,14 @@ public class PointJoinTest extends JoinTestBase {
     }
 
     private RectangleRDD createRectangleRDD() {
-        return new RectangleRDD(sc, InputLocationQueryWindow, offset, splitter, true, numPartitions, StorageLevel.MEMORY_ONLY());
+        return createRectangleRDD(InputLocationQueryWindow);
     }
 
     private PolygonRDD createPolygonRDD() {
-        return new PolygonRDD(sc, InputLocationQueryPolygon, splitter, true, numPartitions, StorageLevel.MEMORY_ONLY());
+        return createPolygonRDD(InputLocationQueryPolygon);
     }
 
     private PointRDD createPointRDD() {
-        return new PointRDD(sc, InputLocation, offset, splitter, true, numPartitions, StorageLevel.MEMORY_ONLY());
+        return createPointRDD(InputLocation);
     }
 }

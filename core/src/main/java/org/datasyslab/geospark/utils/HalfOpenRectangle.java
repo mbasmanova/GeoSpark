@@ -1,4 +1,4 @@
-package org.datasyslab.geospark.joinJudgement;
+package org.datasyslab.geospark.utils;
 
 import com.vividsolutions.jts.geom.Envelope;
 import com.vividsolutions.jts.geom.Point;
@@ -17,5 +17,9 @@ public class HalfOpenRectangle {
     public boolean contains(double x, double y) {
         return x >= envelope.getMinX() && x < envelope.getMaxX()
             && y >= envelope.getMinY() && y < envelope.getMaxY();
+    }
+
+    public Envelope getEnvelope() {
+        return envelope;
     }
 }

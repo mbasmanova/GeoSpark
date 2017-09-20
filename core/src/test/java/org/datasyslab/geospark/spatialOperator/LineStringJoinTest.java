@@ -8,15 +8,19 @@ package org.datasyslab.geospark.spatialOperator;
 
 import com.vividsolutions.jts.geom.LineString;
 import com.vividsolutions.jts.geom.Polygon;
-import org.apache.spark.storage.StorageLevel;
+import org.datasyslab.geospark.enums.GridType;
 import org.datasyslab.geospark.enums.IndexType;
 import org.datasyslab.geospark.spatialRDD.LineStringRDD;
 import org.datasyslab.geospark.spatialRDD.PolygonRDD;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import scala.Tuple2;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 
@@ -25,15 +29,26 @@ import static org.junit.Assert.assertEquals;
 /**
  * @author Arizona State University DataSystems Lab
  */
-
-
-// TODO: Auto-generated Javadoc
-/**
- * The Class LineStringJoinTest.
- */
+@RunWith(Parameterized.class)
 public class LineStringJoinTest extends JoinTestBase {
 
     private static long expectedMatchCount;
+
+    public LineStringJoinTest(GridType gridType, boolean useLegacyPartitionAPIs) {
+        super(gridType, useLegacyPartitionAPIs);
+    }
+
+    @Parameterized.Parameters
+    public static Collection testParams() {
+        return Arrays.asList(new Object[][] {
+            { GridType.RTREE, true },
+            { GridType.RTREE, false },
+            { GridType.QUADTREE, true },
+            { GridType.QUADTREE, false},
+            { GridType.HILBERT, true },
+            { GridType.QUADTREE, false },
+        });
+    }
 
     /**
      * Once executed before all.
@@ -62,10 +77,9 @@ public class LineStringJoinTest extends JoinTestBase {
 
         PolygonRDD queryRDD = createPolygonRDD();
         LineStringRDD spatialRDD = createLineStringRDD();
-        
-        spatialRDD.spatialPartitioning(gridType);
-        queryRDD.spatialPartitioning(spatialRDD.grids);
-        
+
+        partitionRdds(queryRDD, spatialRDD);
+
         List<Tuple2<Polygon, HashSet<LineString>>> result = JoinQuery.SpatialJoinQuery(spatialRDD,queryRDD,false,true).collect();
 
         sanityCheckJoinResults(result);
@@ -97,10 +111,8 @@ public class LineStringJoinTest extends JoinTestBase {
 
         LineStringRDD spatialRDD = createLineStringRDD();
 
-        spatialRDD.spatialPartitioning(gridType);
+        partitionRdds(queryRDD, spatialRDD);
         spatialRDD.buildIndex(indexType, true);
-
-        queryRDD.spatialPartitioning(spatialRDD.grids);
 
         List<Tuple2<Polygon, HashSet<LineString>>> result = JoinQuery.SpatialJoinQuery(spatialRDD,queryRDD,false,true).collect();
 
@@ -122,8 +134,7 @@ public class LineStringJoinTest extends JoinTestBase {
         PolygonRDD queryRDD = createPolygonRDD();
         LineStringRDD spatialRDD = createLineStringRDD();
 
-        spatialRDD.spatialPartitioning(gridType);
-        queryRDD.spatialPartitioning(spatialRDD.grids);
+        partitionRdds(queryRDD, spatialRDD);
 
         JoinQuery.JoinParams joinParams = new JoinQuery.JoinParams(true, indexType);
         List<Tuple2<Polygon, LineString>> results = JoinQuery.spatialJoin(spatialRDD, queryRDD, joinParams).collect();
@@ -133,10 +144,10 @@ public class LineStringJoinTest extends JoinTestBase {
     }
 
     private LineStringRDD createLineStringRDD() {
-        return new LineStringRDD(sc, InputLocation, splitter, true, numPartitions, StorageLevel.MEMORY_ONLY());
+        return createLineStringRDD(InputLocation);
     }
 
     private PolygonRDD createPolygonRDD() {
-        return new PolygonRDD(sc, InputLocationQueryPolygon, splitter, true, numPartitions, StorageLevel.MEMORY_ONLY());
+        return createPolygonRDD(InputLocationQueryPolygon);
     }
 }

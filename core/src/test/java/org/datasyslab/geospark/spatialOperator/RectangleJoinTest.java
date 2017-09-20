@@ -7,14 +7,18 @@
 package org.datasyslab.geospark.spatialOperator;
 
 import com.vividsolutions.jts.geom.Polygon;
-import org.apache.spark.storage.StorageLevel;
+import org.datasyslab.geospark.enums.GridType;
 import org.datasyslab.geospark.enums.IndexType;
 import org.datasyslab.geospark.spatialRDD.RectangleRDD;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import scala.Tuple2;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 
@@ -23,14 +27,26 @@ import static org.junit.Assert.assertEquals;
 /**
  * @author Arizona State University DataSystems Lab
  */
-
-// TODO: Auto-generated Javadoc
-/**
- * The Class RectangleJoinTest.
- */
+@RunWith(Parameterized.class)
 public class RectangleJoinTest extends JoinTestBase {
 
     private static long expectedMatchCount;
+
+    public RectangleJoinTest(GridType gridType, boolean useLegacyPartitionAPIs) {
+        super(gridType, useLegacyPartitionAPIs);
+    }
+
+    @Parameterized.Parameters
+    public static Collection testParams() {
+        return Arrays.asList(new Object[][] {
+            { GridType.RTREE, true },
+            { GridType.RTREE, false },
+            { GridType.QUADTREE, true },
+            { GridType.QUADTREE, false},
+            { GridType.HILBERT, true },
+            { GridType.QUADTREE, false },
+        });
+    }
 
     /**
      * Once executed before all.
@@ -59,8 +75,7 @@ public class RectangleJoinTest extends JoinTestBase {
         RectangleRDD queryRDD = createRectangleRDD();
         RectangleRDD spatialRDD = createRectangleRDD();
         
-        spatialRDD.spatialPartitioning(gridType);
-        queryRDD.spatialPartitioning(spatialRDD.grids);
+        partitionRdds(queryRDD, spatialRDD);
         
         List<Tuple2<Polygon, HashSet<Polygon>>> result = JoinQuery.SpatialJoinQuery(spatialRDD,queryRDD,false,true).collect();
         
@@ -92,10 +107,8 @@ public class RectangleJoinTest extends JoinTestBase {
         RectangleRDD queryRDD = createRectangleRDD();
         RectangleRDD spatialRDD = createRectangleRDD();
 
-        spatialRDD.spatialPartitioning(gridType);
+        partitionRdds(queryRDD, spatialRDD);
         spatialRDD.buildIndex(indexType, true);
-
-        queryRDD.spatialPartitioning(spatialRDD.grids);
 
         List<Tuple2<Polygon, HashSet<Polygon>>> result = JoinQuery.SpatialJoinQuery(spatialRDD,queryRDD,false,true).collect();
 
@@ -117,8 +130,7 @@ public class RectangleJoinTest extends JoinTestBase {
         RectangleRDD queryRDD = createRectangleRDD();
         RectangleRDD spatialRDD = createRectangleRDD();
 
-        spatialRDD.spatialPartitioning(gridType);
-        queryRDD.spatialPartitioning(spatialRDD.grids);
+        partitionRdds(queryRDD, spatialRDD);
 
         JoinQuery.JoinParams joinParams = new JoinQuery.JoinParams(true, indexType);
         List<Tuple2<Polygon, Polygon>> result = JoinQuery.spatialJoin(spatialRDD, queryRDD, joinParams).collect();
@@ -128,6 +140,6 @@ public class RectangleJoinTest extends JoinTestBase {
     }
 
     private RectangleRDD createRectangleRDD() {
-        return new RectangleRDD(sc, InputLocation, offset, splitter, true, numPartitions, StorageLevel.MEMORY_ONLY());
+        return createRectangleRDD(InputLocation);
     }
 }

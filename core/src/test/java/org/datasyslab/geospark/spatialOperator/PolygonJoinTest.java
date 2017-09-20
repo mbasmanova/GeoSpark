@@ -7,14 +7,18 @@
 package org.datasyslab.geospark.spatialOperator;
 
 import com.vividsolutions.jts.geom.Polygon;
-import org.apache.spark.storage.StorageLevel;
+import org.datasyslab.geospark.enums.GridType;
 import org.datasyslab.geospark.enums.IndexType;
 import org.datasyslab.geospark.spatialRDD.PolygonRDD;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import scala.Tuple2;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 
@@ -24,14 +28,27 @@ import static org.junit.Assert.assertEquals;
  * @author Arizona State University DataSystems Lab
  */
 
-// TODO: Auto-generated Javadoc
-/**
- * The Class PolygonJoinTest.
- */
+@RunWith(Parameterized.class)
 public class PolygonJoinTest extends JoinTestBase {
 
     static long expectedContainsMatchCount;
     static long expectedIntersectsMatchCount;
+
+    public PolygonJoinTest(GridType gridType, boolean useLegacyPartitionAPIs) {
+        super(gridType, useLegacyPartitionAPIs);
+    }
+
+    @Parameterized.Parameters
+    public static Collection testParams() {
+        return Arrays.asList(new Object[][] {
+            { GridType.RTREE, true },
+            { GridType.RTREE, false },
+            { GridType.QUADTREE, true },
+            { GridType.QUADTREE, false},
+            { GridType.HILBERT, true },
+            { GridType.QUADTREE, false },
+        });
+    }
 
     /**
      * Once executed before all.
@@ -75,12 +92,12 @@ public class PolygonJoinTest extends JoinTestBase {
     private void testDynamicIndexInt(boolean intersects, IndexType indexType) throws Exception {
         final PolygonRDD queryRDD = createPolygonRDD(InputLocationQueryPolygon);
         final PolygonRDD spatialRDD = createPolygonRDD(InputLocation);
-        spatialRDD.spatialPartitioning(gridType);
-        queryRDD.spatialPartitioning(spatialRDD.grids);
+        partitionRdds(queryRDD, spatialRDD);
 
         final JoinQuery.JoinParams joinParams = new JoinQuery.JoinParams(intersects, indexType);
         final List<Tuple2<Polygon, Polygon>> results = JoinQuery.spatialJoin(spatialRDD, queryRDD, joinParams).collect();
         sanityCheckFlatJoinResults(results);
+
         assertEquals(getExpectedCount(intersects), results.size());
     }
 
@@ -103,8 +120,7 @@ public class PolygonJoinTest extends JoinTestBase {
         PolygonRDD queryRDD = createPolygonRDD(InputLocationQueryPolygon);
         PolygonRDD spatialRDD = createPolygonRDD(InputLocation);
 
-        spatialRDD.spatialPartitioning(gridType);
-        queryRDD.spatialPartitioning(spatialRDD.grids);
+        partitionRdds(queryRDD, spatialRDD);
 
         List<Tuple2<Polygon, HashSet<Polygon>>> result = JoinQuery.SpatialJoinQuery(spatialRDD,queryRDD,false,intersects).collect();
         sanityCheckJoinResults(result);
@@ -140,18 +156,12 @@ public class PolygonJoinTest extends JoinTestBase {
         PolygonRDD queryRDD = createPolygonRDD(InputLocationQueryPolygon);
         PolygonRDD spatialRDD = createPolygonRDD(InputLocation);
 
-        spatialRDD.spatialPartitioning(gridType);
+        partitionRdds(queryRDD, spatialRDD);
         spatialRDD.buildIndex(indexType, true);
-
-        queryRDD.spatialPartitioning(spatialRDD.grids);
 
         List<Tuple2<Polygon, HashSet<Polygon>>> result = JoinQuery.SpatialJoinQuery(spatialRDD,queryRDD,true,intersects).collect();
         sanityCheckJoinResults(result);
         assertEquals(getExpectedCount(intersects), countJoinResults(result));
-    }
-
-    private PolygonRDD createPolygonRDD(String inputLocation) {
-        return new PolygonRDD(sc, inputLocation, splitter, true, numPartitions, StorageLevel.MEMORY_ONLY());
     }
 
     private long getExpectedCount(boolean intersects) {

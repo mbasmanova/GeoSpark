@@ -9,18 +9,18 @@ package org.datasyslab.geospark.spatialOperator;
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.Polygon;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.spark.Partitioner;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.Optional;
 import org.apache.spark.api.java.function.FlatMapFunction2;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
 import org.datasyslab.geospark.enums.IndexType;
 import org.datasyslab.geospark.geometryObjects.Circle;
+import org.datasyslab.geospark.joinJudgement.DedupParams;
 import org.datasyslab.geospark.joinJudgement.DynamicIndexLookupJudgement;
 import org.datasyslab.geospark.joinJudgement.IndexLookupJudgement;
 import org.datasyslab.geospark.joinJudgement.NestedLoopJudgement;
+import org.datasyslab.geospark.spatialPartitioning.SpatialPartitioner;
 import org.datasyslab.geospark.spatialRDD.CircleRDD;
 import org.datasyslab.geospark.spatialRDD.SpatialRDD;
 import scala.Tuple2;
@@ -53,12 +53,17 @@ public class JoinQuery implements Serializable{
         Objects.requireNonNull(spatialRDD.spatialPartitionedRDD, "[JoinQuery] spatialRDD SpatialPartitionedRDD is null. Please do spatial partitioning.");
         Objects.requireNonNull(queryRDD.spatialPartitionedRDD, "[JoinQuery] queryRDD SpatialPartitionedRDD is null. Please use the spatialRDD's grids to do spatial partitioning.");
 
-        if (queryRDD.grids!=null&&spatialRDD.grids!=null&&!queryRDD.grids.equals(spatialRDD.grids)) {
+        final SpatialPartitioner spatialPartitioner = spatialRDD.getPartitioner();
+        final SpatialPartitioner queryPartitioner = queryRDD.getPartitioner();
+
+        if (!queryPartitioner.equals(spatialPartitioner)) {
             throw new IllegalArgumentException("[JoinQuery] queryRDD is not partitioned by the same grids with spatialRDD. Please make sure they both use the same grids otherwise wrong results will appear.");
         }
 
-        if (spatialRDD.spatialPartitionedRDD.getNumPartitions() != queryRDD.spatialPartitionedRDD.getNumPartitions()) {
-            throw new IllegalArgumentException("[JoinQuery] numbers of partitions in queryRDD and spatialRDD don't match. Please make sure they both use the same partitioning otherwise wrong results will appear.");
+        final int spatialNumPart = spatialRDD.spatialPartitionedRDD.getNumPartitions();
+        final int queryNumPart = queryRDD.spatialPartitionedRDD.getNumPartitions();
+        if (spatialNumPart != queryNumPart) {
+            throw new IllegalArgumentException("[JoinQuery] numbers of partitions in queryRDD and spatialRDD don't match: " + queryNumPart + " vs. " + spatialNumPart + ". Please make sure they both use the same partitioning otherwise wrong results will appear.");
         }
     }
 
@@ -113,10 +118,10 @@ public class JoinQuery implements Serializable{
             this.polygonIndexType = null;
         }
 
-        private JoinParamsInternal(boolean considerBoundaryIntersection, IndexType polygonIndexType, boolean allowDuplicates) {
+        private JoinParamsInternal(boolean considerBoundaryIntersection, IndexType polygonIndexType) {
             this.useIndex = false;
             this.considerBoundaryIntersection = considerBoundaryIntersection;
-            this.allowDuplicates = allowDuplicates;
+            this.allowDuplicates = false;
             this.polygonIndexType = polygonIndexType;
         }
     }
@@ -129,25 +134,34 @@ public class JoinQuery implements Serializable{
         verifyCRSMatch(spatialRDD, queryRDD);
         verifyPartitioningMatch(spatialRDD, queryRDD);
 
+        final SpatialPartitioner partitioner =
+            (SpatialPartitioner) spatialRDD.spatialPartitionedRDD.partitioner().get();
+        final DedupParams dedupParams = partitioner.getDedupParams();
+
         final JavaRDD<Pair<U, T>> resultWithDuplicates;
         if(joinParams.useIndex) {
             Objects.requireNonNull(spatialRDD.indexedRDD, "[JoinQuery] Index doesn't exist. Please build index.");
 
-            final IndexLookupJudgement judgement = new IndexLookupJudgement(joinParams.considerBoundaryIntersection);
+            final IndexLookupJudgement judgement =
+                new IndexLookupJudgement(joinParams.considerBoundaryIntersection, dedupParams);
             resultWithDuplicates = spatialRDD.indexedRDD.zipPartitions(queryRDD.spatialPartitionedRDD, judgement);
 
         } else {
             final FlatMapFunction2<Iterator<T>, Iterator<U>, Pair<U, T>> judgement;
             if (joinParams.polygonIndexType != null) {
-                judgement = new DynamicIndexLookupJudgement(joinParams.considerBoundaryIntersection, joinParams.polygonIndexType);
+                judgement = new DynamicIndexLookupJudgement(
+                    joinParams.considerBoundaryIntersection, joinParams.polygonIndexType, dedupParams);
             } else {
-                judgement = new NestedLoopJudgement(joinParams.considerBoundaryIntersection);
+                judgement = new NestedLoopJudgement(joinParams.considerBoundaryIntersection, dedupParams);
             }
-            final Optional<Partitioner> partitioner = spatialRDD.spatialPartitionedRDD.partitioner();
             resultWithDuplicates = spatialRDD.spatialPartitionedRDD.zipPartitions(queryRDD.spatialPartitionedRDD, judgement);
         }
 
-        final JavaRDD<Pair<U, T>> result = joinParams.allowDuplicates ? resultWithDuplicates : resultWithDuplicates.distinct();
+        final boolean uniqueResults = dedupParams != null;
+
+        final JavaRDD<Pair<U, T>> result =
+            (joinParams.allowDuplicates || uniqueResults) ? resultWithDuplicates
+                : resultWithDuplicates.distinct();
 
         return result.mapToPair(new PairFunction<Pair<U, T>, U, T>() {
             @Override
@@ -169,6 +183,9 @@ public class JoinQuery implements Serializable{
      *
      * If {@code useIndex} is true, the join scans polygons and uses an index of geometries
      * built prior to invoking the join to lookup matches.
+     *
+     * Because the results are reported as a HashSet, any duplicates in the original spatialRDD will
+     * be eliminated.
      *
      * @param spatialRDD Set of geometries
      * @param queryRDD Set of polygons
@@ -195,20 +212,14 @@ public class JoinQuery implements Serializable{
     public static final class JoinParams {
         public final boolean considerBoundaryIntersection;
         public final IndexType polygonIndexType;
-        private final boolean allowDuplicates;
 
         public JoinParams(boolean considerBoundaryIntersection) {
-            this(considerBoundaryIntersection, null, false);
+            this(considerBoundaryIntersection, null);
         }
 
         public JoinParams(boolean considerBoundaryIntersection, IndexType polygonIndexType) {
-            this(considerBoundaryIntersection, polygonIndexType, false);
-        }
-
-        public JoinParams(boolean considerBoundaryIntersection, IndexType polygonIndexType, boolean allowDuplicates) {
             this.considerBoundaryIntersection = considerBoundaryIntersection;
             this.polygonIndexType = polygonIndexType;
-            this.allowDuplicates = allowDuplicates;
         }
     }
 
@@ -223,6 +234,8 @@ public class JoinQuery implements Serializable{
      * If {@link JoinParams#polygonIndexType} is specified, the join builds an index of the specified type
      * from polygons partition, then scans the other partition and looks up matching polygons in the index.
      *
+     * Duplicates present in the input RDDs will be reflected in the join results.
+     *
      * @param spatialRDD Set of geometries
      * @param queryRDD Set of polygons
      * @param joinParams Join parameters including relationship type ('contains' vs. 'intersects')
@@ -230,12 +243,14 @@ public class JoinQuery implements Serializable{
      * @return RDD of pairs of matching geometries
      */
     public static <T extends Geometry, U extends Geometry> JavaPairRDD<U, T> spatialJoin(SpatialRDD<T> spatialRDD, SpatialRDD<U> queryRDD, JoinParams joinParams) throws Exception {
-        final JoinParamsInternal params = new JoinParamsInternal(joinParams.considerBoundaryIntersection, joinParams.polygonIndexType, joinParams.allowDuplicates);
+        final JoinParamsInternal params = new JoinParamsInternal(joinParams.considerBoundaryIntersection, joinParams.polygonIndexType);
         return spatialJoinInt(spatialRDD, queryRDD, params);
     }
 
     /**
      * Spatial join query count by key.
+     *
+     * Duplicates present in the input RDDs will be reflected in the join results.
      *
      * @param spatialRDD the spatial RDD
      * @param queryRDD the query RDD
