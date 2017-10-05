@@ -15,6 +15,7 @@ import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryComponentFilter;
 import com.vividsolutions.jts.geom.GeometryFactory;
 import com.vividsolutions.jts.geom.GeometryFilter;
+import com.vividsolutions.jts.geom.Point;
 
 // TODO: Auto-generated Javadoc
 /**
@@ -103,44 +104,72 @@ public class Circle extends Geometry {
 	
 	/* (non-Javadoc)
 	 * @see com.vividsolutions.jts.geom.Geometry#covers(com.vividsolutions.jts.geom.Geometry)
+	 *
+	 * Returns true if this circle covers the bounding box of the input geometry.
+	 *
+	 * TODO return true if this circle covers the actual geometry, but doesn't necessarily cover
+	 * its bounding box
 	 */
 	@Override
-	public boolean covers(Geometry g) {
+	public boolean covers(Geometry other) {
 		// short-circuit test
-		if (! getEnvelopeInternal().covers(g.getEnvelopeInternal()))
+		Envelope otherEnvelope = other.getEnvelopeInternal();
+		if (! getEnvelopeInternal().covers(otherEnvelope)) {
 			return false;
+		}
+
 		// optimization for rectangle arguments
 		if (isRectangle()) {
 			// since we have already tested that the test envelope is covered
 			return true;
 		}
-		double x1,x2,y1,y2;
-		x1=g.getEnvelopeInternal().getMinX();
-		x2=g.getEnvelopeInternal().getMaxX();
-		y1=g.getEnvelopeInternal().getMinY();
-		y2=g.getEnvelopeInternal().getMaxY();	
-		return covers(x1,y1)&&covers(x1,y2)&&covers(x2,y2)&&covers(x2,y1);
+
+		// optimization for points
+		if (other instanceof Point) {
+			Point point = (Point) other;
+			return covers(point.getX(), point.getY());
+		}
+
+		double x1 = otherEnvelope.getMinX();
+		double x2 = otherEnvelope.getMaxX();
+		double y1 = otherEnvelope.getMinY();
+		double y2 = otherEnvelope.getMaxY();
+		return covers(x1, y1) && covers(x1, y2) && covers(x2, y2) && covers(x2, y1);
 	}
 	
 	/* (non-Javadoc)
 	 * @see com.vividsolutions.jts.geom.Geometry#intersects(com.vividsolutions.jts.geom.Geometry)
+	 *
+	 * Returns true if this circle covers any of the corners of the bounding box of the input geometry
+	 *
+	 * TODO return true if this circle has any common points with the actual geometry, but doesn't
+	 * necessarily cover any of the corners of the bounding box of the input geometry
 	 */
 	@Override
-	public boolean intersects(Geometry g) {
+	public boolean intersects(Geometry other) {
 		// short-circuit test
-		if (! getEnvelopeInternal().covers(g.getEnvelopeInternal()))
+		Envelope otherEnvelope = other.getEnvelopeInternal();
+		if (! getEnvelopeInternal().intersects(otherEnvelope)) {
 			return false;
+		}
+
 		// optimization for rectangle arguments
 		if (isRectangle()) {
 			// since we have already tested that the test envelope is covered
 			return true;
 		}
-		double x1,x2,y1,y2;
-		x1=g.getEnvelopeInternal().getMinX();
-		x2=g.getEnvelopeInternal().getMaxX();
-		y1=g.getEnvelopeInternal().getMinY();
-		y2=g.getEnvelopeInternal().getMaxY();	
-		return covers(x1,y1)||covers(x1,y2)||covers(x2,y2)||covers(x2,y1);
+
+		// optimization for points
+		if (other instanceof Point) {
+			Point point = (Point) other;
+			return covers(point.getX(), point.getY());
+		}
+
+		double x1 = otherEnvelope.getMinX();
+		double x2 = otherEnvelope.getMaxX();
+		double y1 = otherEnvelope.getMinY();
+		double y2 = otherEnvelope.getMaxY();
+		return covers(x1, y1) || covers(x1, y2) || covers(x2, y2) || covers(x2, y1);
 	}
 	
 	/**
@@ -150,9 +179,9 @@ public class Circle extends Geometry {
 	 * @param y the y
 	 * @return true, if successful
 	 */
-	public boolean covers(double x, double y) {
+	private boolean covers(double x, double y) {
 		double distance = Math.sqrt((x-this.centerPoint.x)*(x-this.centerPoint.x)+(y-this.centerPoint.y)*(y-this.centerPoint.y));
-		return distance<=this.radius?true:false;
+		return distance <= this.radius;
 	}
 	 
 	/* (non-Javadoc)

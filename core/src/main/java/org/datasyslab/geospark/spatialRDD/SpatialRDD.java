@@ -143,6 +143,12 @@ public class SpatialRDD<T extends Geometry> implements Serializable{
 		}
 	}
 
+	public boolean spatialPartitioning(GridType gridType) throws Exception {
+		int numPartitions = this.rawSpatialRDD.rdd().partitions().length;
+		spatialPartitioning(gridType, numPartitions);
+		return true;
+	}
+
 	/**
 	 * Spatial partitioning.
 	 *
@@ -150,10 +156,9 @@ public class SpatialRDD<T extends Geometry> implements Serializable{
 	 * @return true, if successful
 	 * @throws Exception the exception
 	 */
-	public boolean spatialPartitioning(GridType gridType) throws Exception
+	public void spatialPartitioning(GridType gridType, int numPartitions) throws Exception
 	{
-        int numPartitions = this.rawSpatialRDD.rdd().partitions().length;;
-		if(this.boundaryEnvelope==null)
+        if(this.boundaryEnvelope==null)
         {
         	throw new Exception("[AbstractSpatialRDD][spatialPartitioning] SpatialRDD boundary is null. Please call analyze() first.");
         }
@@ -224,7 +229,6 @@ public class SpatialRDD<T extends Geometry> implements Serializable{
 		}
 
 		this.spatialPartitionedRDD = partition(partitioner);
-		return true;
 	}
 
 	public SpatialPartitioner getPartitioner()
