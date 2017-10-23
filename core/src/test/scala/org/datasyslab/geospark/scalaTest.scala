@@ -1,15 +1,18 @@
 package org.datasyslab.geospark
 
-import com.vividsolutions.jts.geom.{Coordinate, Envelope, GeometryFactory, Polygon}
+import com.vividsolutions.jts.geom.{Coordinate, Envelope, GeometryFactory}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkConf, SparkContext}
 import org.datasyslab.geospark.enums.{FileDataSplitter, GridType, IndexType}
 import org.datasyslab.geospark.formatMapper.EarthdataHDFPointMapper
-import org.datasyslab.geospark.formatMapper.shapefileParser.ShapefileRDD
+import org.datasyslab.geospark.monitoring.{GeoSparkListener}
+import org.datasyslab.geospark.spatialOperator.JoinQuery.JoinParams
 import org.datasyslab.geospark.spatialOperator.{JoinQuery, KNNQuery, RangeQuery}
 import org.datasyslab.geospark.spatialRDD.{CircleRDD, PointRDD, PolygonRDD}
 import org.scalatest.FunSpec
+
+import scala.collection.mutable
 
 class scalaTest extends FunSpec {
 
@@ -79,7 +82,11 @@ class scalaTest extends FunSpec {
 			val objectRDD = new PointRDD(sc, PointRDDInputLocation, PointRDDOffset, PointRDDSplitter, true, StorageLevel.MEMORY_ONLY)
 
 			objectRDD.spatialPartitioning(joinQueryPartitioningType)
-			queryWindowRDD.spatialPartitioning(objectRDD.grids)
+			queryWindowRDD.spatialPartitioning(objectRDD.getPartitioner)
+
+			sc.addSparkListener(new GeoSparkListener)
+
+			val results = JoinQuery.spatialJoin(objectRDD, queryWindowRDD, new JoinParams(false, IndexType.RTREE)).collect
 
 			for(i <- 1 to eachQueryLoopTimes)
 			{
@@ -92,7 +99,7 @@ class scalaTest extends FunSpec {
 			val objectRDD = new PointRDD(sc, PointRDDInputLocation, PointRDDOffset, PointRDDSplitter, true, StorageLevel.MEMORY_ONLY)
 
 			objectRDD.spatialPartitioning(joinQueryPartitioningType)
-			queryWindowRDD.spatialPartitioning(objectRDD.grids)
+			queryWindowRDD.spatialPartitioning(objectRDD.getPartitioner)
 
 			objectRDD.buildIndex(PointRDDIndexType,true)
 
@@ -107,7 +114,7 @@ class scalaTest extends FunSpec {
 			val queryWindowRDD = new CircleRDD(objectRDD,0.1)
 
 			objectRDD.spatialPartitioning(GridType.RTREE)
-			queryWindowRDD.spatialPartitioning(objectRDD.grids)
+			queryWindowRDD.spatialPartitioning(objectRDD.getPartitioner)
 
 			for(i <- 1 to eachQueryLoopTimes)
 			{
@@ -120,7 +127,7 @@ class scalaTest extends FunSpec {
 			val queryWindowRDD = new CircleRDD(objectRDD,0.1)
 
 			objectRDD.spatialPartitioning(GridType.RTREE)
-			queryWindowRDD.spatialPartitioning(objectRDD.grids)
+			queryWindowRDD.spatialPartitioning(objectRDD.getPartitioner)
 
 			objectRDD.buildIndex(IndexType.RTREE,true)
 

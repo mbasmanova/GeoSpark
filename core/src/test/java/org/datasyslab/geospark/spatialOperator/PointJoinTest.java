@@ -23,8 +23,12 @@ import scala.Tuple2;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.BiFunction;
 
 import static org.junit.Assert.assertEquals;
 
@@ -47,6 +51,7 @@ public class PointJoinTest extends JoinTestBase {
             { GridType.RTREE, false, 11 },
             { GridType.QUADTREE, true, 11 },
             { GridType.QUADTREE, false, 11},
+            { GridType.KDBTREE, false, 11},
         });
     }
 
@@ -164,7 +169,7 @@ public class PointJoinTest extends JoinTestBase {
     @Test
     public void testDynamicRTreeWithRectanges() throws Exception {
         final RectangleRDD rectangleRDD = createRectangleRDD();
-        final long expectedCount = (gridType == GridType.QUADTREE)
+        final long expectedCount = expectToPreserveOriginalDuplicates()
             ? expectedRectangleMatchWithOriginalDuplicatesCount : expectedRectangleMatchCount;
         testDynamicRTreeInt(rectangleRDD, IndexType.RTREE, expectedCount);
     }
@@ -172,7 +177,7 @@ public class PointJoinTest extends JoinTestBase {
     @Test
     public void testDynamicRTreeWithPolygons() throws Exception {
         PolygonRDD polygonRDD = createPolygonRDD();
-        final long expectedCount = (gridType == GridType.QUADTREE)
+        final long expectedCount = expectToPreserveOriginalDuplicates()
             ? expectedPolygonMatchWithOriginalDuplicatesCount : expectedPolygonMatchCount;
         testDynamicRTreeInt(polygonRDD, IndexType.RTREE, expectedCount);
     }

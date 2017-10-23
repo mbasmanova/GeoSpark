@@ -8,6 +8,7 @@ package org.datasyslab.geospark.spatialOperator;
 
 import com.vividsolutions.jts.geom.Geometry;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.FlatMapFunction2;
@@ -19,6 +20,8 @@ import org.datasyslab.geospark.joinJudgement.DedupParams;
 import org.datasyslab.geospark.joinJudgement.DynamicIndexLookupJudgement;
 import org.datasyslab.geospark.joinJudgement.IndexLookupJudgement;
 import org.datasyslab.geospark.joinJudgement.NestedLoopJudgement;
+import org.datasyslab.geospark.monitoring.GeoSparkMetric;
+import org.datasyslab.geospark.monitoring.GeoSparkMetrics;
 import org.datasyslab.geospark.spatialPartitioning.SpatialPartitioner;
 import org.datasyslab.geospark.spatialRDD.CircleRDD;
 import org.datasyslab.geospark.spatialRDD.SpatialRDD;
@@ -337,9 +340,15 @@ public class JoinQuery implements Serializable{
      * </p>
      */
     public static <U extends Geometry, T extends Geometry> JavaPairRDD<U, T> spatialJoin(
-            SpatialRDD<T> spatialRDD,
-            SpatialRDD<U> queryRDD,
-            JoinParams joinParams) throws Exception {
+        SpatialRDD<T> spatialRDD,
+        SpatialRDD<U> queryRDD,
+        JoinParams joinParams) throws Exception {
+
+        SparkContext sparkContext = spatialRDD.spatialPartitionedRDD.context();
+        GeoSparkMetric buildCount = GeoSparkMetrics.createMetric(sparkContext, "buildCount");
+        GeoSparkMetric streamCount = GeoSparkMetrics.createMetric(sparkContext, "streamCount");
+        GeoSparkMetric resultCount = GeoSparkMetrics.createMetric(sparkContext, "resultCount");
+        GeoSparkMetric candidateCount = GeoSparkMetrics.createMetric(sparkContext, "candidateCount");
 
         verifyCRSMatch(spatialRDD, queryRDD);
         verifyPartitioningMatch(spatialRDD, queryRDD);
@@ -360,7 +369,8 @@ public class JoinQuery implements Serializable{
             final FlatMapFunction2<Iterator<T>, Iterator<U>, Pair<U, T>> judgement;
             if (joinParams.polygonIndexType != null) {
                 judgement = new DynamicIndexLookupJudgement(
-                        joinParams.considerBoundaryIntersection, joinParams.polygonIndexType, dedupParams);
+                    joinParams.considerBoundaryIntersection, joinParams.polygonIndexType, dedupParams,
+                    buildCount, streamCount, resultCount, candidateCount);
             } else {
                 judgement = new NestedLoopJudgement(joinParams.considerBoundaryIntersection, dedupParams);
             }

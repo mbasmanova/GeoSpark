@@ -18,6 +18,7 @@ import org.apache.log4j.Logger;
 import org.apache.spark.TaskContext;
 import org.apache.spark.api.java.function.FlatMapFunction2;
 import org.datasyslab.geospark.enums.IndexType;
+import org.datasyslab.geospark.monitoring.GeoSparkMetric;
 
 import javax.annotation.Nullable;
 import java.io.Serializable;
@@ -34,26 +35,41 @@ public class DynamicIndexLookupJudgement<T extends Geometry, U extends Geometry>
     private static final Logger log = LogManager.getLogger(DynamicIndexLookupJudgement.class);
 
     private final IndexType indexType;
+    private final GeoSparkMetric buildCount;
+    private final GeoSparkMetric streamCount;
+    private final GeoSparkMetric resultCount;
+    private final GeoSparkMetric candidateCount;
 
     /**
      * @see JudgementBase
      */
     public DynamicIndexLookupJudgement(boolean considerBoundaryIntersection, IndexType indexType,
-                                       @Nullable DedupParams dedupParams) {
+                                       @Nullable DedupParams dedupParams,
+                                       GeoSparkMetric buildCount,
+                                       GeoSparkMetric streamCount,
+                                       GeoSparkMetric resultCount,
+                                       GeoSparkMetric candidateCount) {
         super(considerBoundaryIntersection, dedupParams);
         this.indexType = indexType;
+        this.buildCount = buildCount;
+        this.streamCount = streamCount;
+        this.resultCount = resultCount;
+        this.candidateCount = candidateCount;
     }
 
     @Override
     public Iterator<Pair<U, T>> call(final Iterator<T> shapes, final Iterator<U> windowShapes) throws Exception {
 
-        if (!windowShapes.hasNext()) {
+        if (!windowShapes.hasNext() || !shapes.hasNext()) {
+            buildCount.add(0);
+            streamCount.add(0);
+            resultCount.add(0);
             return Collections.emptyIterator();
         }
 
         initPartition();
 
-        final SpatialIndex spatialIndex = buildIndex(shapes);
+        final SpatialIndex spatialIndex = buildIndex(windowShapes);
 
         return new Iterator<Pair<U, T>>() {
             // A batch of pre-computed matches
@@ -92,7 +108,7 @@ public class DynamicIndexLookupJudgement<T extends Geometry, U extends Geometry>
             }
 
             private boolean populateNextBatch() {
-                if (!windowShapes.hasNext()) {
+                if (!shapes.hasNext()) {
                     if (batch != null) {
                         batch = null;
                     }
@@ -101,14 +117,17 @@ public class DynamicIndexLookupJudgement<T extends Geometry, U extends Geometry>
 
                 batch = new ArrayList<>();
 
-                while (windowShapes.hasNext()) {
+                while (shapes.hasNext()) {
                     shapeCnt ++;
-                    final U windowShape = windowShapes.next();
-                    final List candidates = spatialIndex.query(windowShape.getEnvelopeInternal());
+                    streamCount.add(1);
+                    final T shape = shapes.next();
+                    final List candidates = spatialIndex.query(shape.getEnvelopeInternal());
                     for (Object candidate : candidates) {
-                        final T object = (T) candidate;
-                        if (match(windowShape, object)) {
-                            batch.add(Pair.of(windowShape, object));
+                        candidateCount.add(1);
+                        final U windowShape = (U) candidate;
+                        if (match(windowShape, shape)) {
+                            batch.add(Pair.of(windowShape, shape));
+                            resultCount.add(1);
                         }
                     }
                     logMilestone(shapeCnt, 100 * 1000, "Streaming shapes");
@@ -128,16 +147,17 @@ public class DynamicIndexLookupJudgement<T extends Geometry, U extends Geometry>
         };
     }
 
-    private SpatialIndex buildIndex(Iterator<T> geometries) {
+    private SpatialIndex buildIndex(Iterator<U> geometries) {
         long count = 0;
         final SpatialIndex index = newIndex();
         while (geometries.hasNext()) {
-            T geometry = geometries.next();
+            U geometry = geometries.next();
             index.insert(geometry.getEnvelopeInternal(), geometry);
             count++;
         }
         index.query(new Envelope(0.0,0.0,0.0,0.0));
         log("Loaded %d shapes into an index", count);
+        buildCount.add((int) count);
         return index;
     }
 
